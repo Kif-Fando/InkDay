@@ -88,6 +88,22 @@ The result is a 32-bit ARM EABI5 dynamic executable (`make` prints the `file` ou
 json-c is linked **statically** because the SDK and the device ship different json-c
 sonames.
 
+## Debugging
+
+Remote debugging uses the static `gdbserver` from the SDK on the reader and
+`gdb-multiarch` on the PC (the SDK's gdb 7.4 cannot read Clang's DWARF 5):
+
+```bash
+sudo apt install gdb-multiarch
+make gdbserver-install   # once: copies gdbserver to /mnt/ext1/system/bin/
+make debug               # terminal 1: -g -O0 build in build/debug/, runs under gdbserver
+make gdb                 # terminal 2: connects to the reader's IP on port 2345
+```
+
+In gdb, set breakpoints (`break weather_read_result`) and type `continue` to start the
+app. Closing gdb or InkDay ends the session. Run `make deploy` afterwards to put the
+release build back on the reader.
+
 ## Installation
 
 Copy `InkDay.app` to the `applications` folder on the reader's internal storage
@@ -139,8 +155,6 @@ blocks.
 
 ## Roadmap
 
-- Own translations for labels the firmware does not provide.
-- Remote debugging with GDB.
 - Google Calendar widget.
 - Custom application name and icon in the reader's menu.
 - Home Assistant integration.
