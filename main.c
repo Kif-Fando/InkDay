@@ -583,6 +583,8 @@ static int main_handler(int event, int par1, int par2)
       {
         fprintf(stderr, "Invalid screen_mode_inverted: %d\n", inverted);
       }
+      /* The language may change while InkDay is in the background. */
+      i18n_set_language(ReadString(config, "language", "en"));
       CloseConfigNoSave(config);
     }
     /* Configure/draw the widget before resuming its asynchronous timer. */

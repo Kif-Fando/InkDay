@@ -40,7 +40,11 @@ typedef enum
   STR_COUNT
 } StringId;
 
-/* Firmware translation first, then the English fallback. */
+/* Firmware translation first, then the application dictionary, then English. */
 const char *tr(StringId id);
+
+/* Select the application dictionary by firmware language code, e.g. "ru".
+   The code is not retained; unknown codes fall back to English. */
+void i18n_set_language(const char *code);
 
 #endif
