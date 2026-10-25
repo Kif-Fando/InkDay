@@ -13,7 +13,7 @@ import sys
 
 KEY = "U_InkDay"
 ENTRY = {
-    "path": "applications/InkDay.app",
+    "path": "/mnt/ext1/applications/InkDay.app",
     "title": "InkDay",
     "icon": {"path": "applications/icons/InkDay.bmp"},
     "focused_icon": {"path": "applications/icons/InkDay_f.bmp"},
