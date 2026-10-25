@@ -155,10 +155,24 @@ release build back on the reader.
 
 ## Installation
 
-Copy `InkDay.app` to the `applications` folder on the reader's internal storage
+Download the ready-built
+[`InkDay.app`](https://github.com/Kif-Fando/InkDay/releases/latest/download/InkDay.app)
+from the [latest release](https://github.com/Kif-Fando/InkDay/releases/latest), or build
+it yourself (see above). Copy `InkDay.app` to the `applications` folder on the reader's internal storage
 (`/mnt/ext1/applications/` on the device), then start it from the Applications menu.
 
 Over USB, the folder is `applications/` in the root of the reader's storage.
+
+### Publishing a release
+
+```bash
+make release VERSION=1.0
+```
+
+This refuses to run with uncommitted changes, makes a clean release build and creates the
+GitHub release `v1.0` with `build/InkDay.app` attached (needs the
+[GitHub CLI](https://cli.github.com/) logged in, and the commit pushed). The website
+links to `releases/latest/download/InkDay.app`, so keep the asset name.
 
 ### Deploying over SSH (development)
 
