@@ -1,5 +1,6 @@
 #include "settings.h"
 #include "geocoding.h"
+#include "i18n.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -66,7 +67,9 @@ static void search_completed(const GeoPlace *places, int count, const char *erro
   }
   if (error != NULL)
   {
-    search_error(error);
+    /* Detailed geocoding errors stay in the log; the screen gets a translatable one. */
+    fprintf(stderr, "Settings search: %s\n", error);
+    search_error(tr(STR_SEARCH_FAILED));
     return;
   }
   search_busy = 0;
@@ -86,7 +89,7 @@ static void search_completed(const GeoPlace *places, int count, const char *erro
     selected_result = -1;
 
     snprintf(search_message, sizeof(search_message),
-             "IP location: %.60s, %.60s", draft.city, draft.country);
+             "%s: %.60s, %.60s", tr(STR_IP_LOCATION), draft.city, draft.country);
     redraw_settings();
 
     return;
@@ -99,9 +102,9 @@ static void search_completed(const GeoPlace *places, int count, const char *erro
   }
   snprintf(search_message, sizeof(search_message), "%s",
            count
-               ? (search_by_ip ? "Approximate IP location: tap to select"
-                               : "Select a city:")
-               : "No cities found");
+               ? (search_by_ip ? tr(STR_SELECT_IP_LOCATION)
+                               : tr(STR_SELECT_CITY))
+               : tr(STR_NOTHING_FOUND));
   redraw_settings();
 }
 
@@ -129,10 +132,10 @@ static void connection_poll(void)
     network_finished = 0;
     if (network_status != NET_OK)
     {
-      search_error("Network connection failed");
+      search_error(tr(STR_NETWORK_ERROR));
       return;
     }
-    snprintf(search_message, sizeof(search_message), "Searching...");
+    snprintf(search_message, sizeof(search_message), "%s", tr(STR_SEARCHING));
     redraw_settings();
     const int started = search_by_ip
                             ? geocoding_detect_ip(search_completed)
@@ -140,7 +143,7 @@ static void connection_poll(void)
 
     if (!started)
     {
-      search_error("Cannot start location lookup");
+      search_error(tr(STR_CANNOT_START_LOOKUP));
     }
     return;
   }
@@ -148,7 +151,7 @@ static void connection_poll(void)
   {
     /* InkView offers no per-attempt cancel token: wait for its late callback
        before allowing another network attempt. */
-    search_error("Connection timed out; try again after network settles");
+    search_error(tr(STR_TIMEOUT));
     return;
   }
   SetHardTimer("settings-network", connection_poll, 500);
@@ -162,18 +165,18 @@ static void start_search(int by_ip)
   }
   if (network_outstanding)
   {
-    search_error("Previous network connection is still finishing");
+    search_error(tr(STR_PREVIOUS_CONNECTION_BUSY));
     return;
   }
   if (!by_ip && (draft.city[0] == '\0' || strspn(draft.city, " \t\r\n") == strlen(draft.city)))
   {
-    search_error("Enter a city name");
+    search_error(tr(STR_ENTER_CITY));
     return;
   }
   const time_t now = time(NULL);
   if (now == (time_t)-1)
   {
-    search_error("Cannot read connection time");
+    search_error(tr(STR_CANNOT_START_CONNECTION));
     return;
   }
   result_count = 0;
@@ -183,14 +186,14 @@ static void start_search(int by_ip)
   network_finished = 0;
   network_outstanding = 1;
   network_deadline = now + 30;
-  snprintf(search_message, sizeof(search_message), "Connecting...");
+  snprintf(search_message, sizeof(search_message), "%s...", tr(STR_CONNECTING));
   redraw_settings();
 
   const int status = NetConnectAsync(connection_completed);
   if (status < 0 && network_outstanding)
   {
     network_outstanding = 0;
-    search_error("Cannot start network connection");
+    search_error(tr(STR_CANNOT_START_CONNECTION));
     return;
   }
   SetHardTimer("settings-network", connection_poll, 500);
@@ -237,7 +240,7 @@ static void city_keyboard_done(char *text)
     if (length >= sizeof(draft.city))
     {
       fprintf(stderr, "Settings: city name is too long\n");
-      snprintf(search_message, sizeof(search_message), "City name is too long");
+      snprintf(search_message, sizeof(search_message), "%s", tr(STR_CITY_TOO_LONG));
     }
     else if (strcmp(draft.city, text) != 0)
     {
@@ -279,14 +282,13 @@ void settings_draw(ifont *font, int foreground_color, int background_color)
   SetFont(font, foreground_color);
 
   DrawTextRect(SETTINGS_MARGIN, 40, content_width, 80,
-               GetLangText("@Settings"), ALIGN_LEFT | VALIGN_MIDDLE);
+               tr(STR_SETTINGS), ALIGN_LEFT | VALIGN_MIDDLE);
 
   DrawLine(SETTINGS_MARGIN, 130, ScreenWidth() - SETTINGS_MARGIN, 130,
            foreground_color);
 
-  /* Temporary English labels; application translations will use these meanings. */
   DrawTextRect(SETTINGS_MARGIN, 155, content_width, 60,
-               "Weather / City", ALIGN_LEFT | VALIGN_MIDDLE);
+               tr(STR_WEATHER_CITY), ALIGN_LEFT | VALIGN_MIDDLE);
 
   DrawRect(SETTINGS_MARGIN, CITY_Y, content_width, CITY_HEIGHT,
            foreground_color);
@@ -300,17 +302,20 @@ void settings_draw(ifont *font, int foreground_color, int background_color)
   DrawRect(SETTINGS_MARGIN, SEARCH_Y, search_width, SEARCH_HEIGHT,
            foreground_color);
   DrawTextRect(SETTINGS_MARGIN, SEARCH_Y, search_width, SEARCH_HEIGHT,
-               search_busy && !search_by_ip ? "Searching..." : "Search",
+               search_busy && !search_by_ip ? tr(STR_SEARCHING) : tr(STR_SEARCH),
                ALIGN_CENTER | VALIGN_MIDDLE);
 
   DrawRect(detect_x, SEARCH_Y, search_width, SEARCH_HEIGHT,
            foreground_color);
   DrawTextRect(detect_x, SEARCH_Y, search_width, SEARCH_HEIGHT,
-               search_busy && search_by_ip ? "Detecting..." : "Detect by IP",
+               search_busy && search_by_ip ? tr(STR_DETECTING) : tr(STR_DETECT_BY_IP),
                ALIGN_CENTER | VALIGN_MIDDLE);
 
+  char interval_title[160];
+  snprintf(interval_title, sizeof(interval_title), "%s (%s)",
+           tr(STR_UPDATE_INTERVAL), tr(STR_MINUTES_SHORT));
   DrawTextRect(SETTINGS_MARGIN, 435, content_width, 60,
-               "Update interval (min)", ALIGN_LEFT | VALIGN_MIDDLE);
+               interval_title, ALIGN_LEFT | VALIGN_MIDDLE);
 
   const int option_width = interval_width();
 
@@ -378,11 +383,11 @@ void settings_draw(ifont *font, int foreground_color, int background_color)
   DrawRect(SETTINGS_MARGIN, y, width, SETTINGS_BUTTON_HEIGHT,
            foreground_color);
   DrawTextRect(SETTINGS_MARGIN, y, width, SETTINGS_BUTTON_HEIGHT,
-               GetLangText("@Cancel"), ALIGN_CENTER | VALIGN_MIDDLE);
+               tr(STR_CANCEL), ALIGN_CENTER | VALIGN_MIDDLE);
 
   DrawRect(save_x, y, width, SETTINGS_BUTTON_HEIGHT, foreground_color);
   DrawTextRect(save_x, y, width, SETTINGS_BUTTON_HEIGHT,
-               GetLangText("@Save"), ALIGN_CENTER | VALIGN_MIDDLE);
+               tr(STR_SAVE), ALIGN_CENTER | VALIGN_MIDDLE);
 
   FullUpdate();
 }
@@ -401,7 +406,7 @@ SettingsAction settings_handle_tap(int x, int y)
 
     /* Keep the buffer alive for the entire keyboard session. */
     keyboard_open = 1;
-    OpenKeyboard("City", city_input, sizeof(city_input) - 1,
+    OpenKeyboard(tr(STR_CITY), city_input, sizeof(city_input) - 1,
                  KBD_NORMAL, city_keyboard_done);
     return SETTINGS_NONE;
   }
@@ -438,7 +443,7 @@ SettingsAction settings_handle_tap(int x, int y)
       draft.location_selected = 1;
       selected_result = -1;
       result_count = 0;
-      snprintf(search_message, sizeof(search_message), "Selected: %.60s, %.60s", draft.city, draft.country);
+      snprintf(search_message, sizeof(search_message), "%s: %.60s, %.60s", tr(STR_SELECTED), draft.city, draft.country);
       redraw_settings();
     }
     return SETTINGS_NONE;
@@ -482,7 +487,7 @@ SettingsAction settings_handle_tap(int x, int y)
     {
       fprintf(stderr, "Settings: select a resolved city before saving\n");
       snprintf(search_message, sizeof(search_message), "%s",
-               search_busy ? "Wait for search or cancel" : "Search and select a city first");
+               search_busy ? tr(STR_PLEASE_WAIT) : tr(STR_SEARCH_AND_SELECT_FIRST));
       redraw_settings();
       return SETTINGS_NONE;
     }

@@ -3,6 +3,7 @@
 #include "settings.h"
 #include "settings_store.h"
 #include "geocoding.h"
+#include "i18n.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -76,7 +77,7 @@ static void configure_weather_view(void)
       .detail_font = date_font,
       .footer_font = weather_footer_font,
       .city = initial_location_state != LOCATION_IDLE
-                  ? "Detecting location..."
+                  ? tr(STR_DETECTING_LOCATION)
                   : weather_settings.city,
       .region = weather_settings.region};
   weather_set_view(&view);
@@ -313,24 +314,21 @@ static void close_settings(int save)
     if (!draft->location_selected)
     {
       fprintf(stderr, "Settings: location has not been selected\n");
-      Message(ICON_WARNING, GetLangText("@Settings"),
-              "Search and select a city first.", 3000);
+      Message(ICON_WARNING, tr(STR_SETTINGS),
+              tr(STR_SEARCH_AND_SELECT_FIRST), 3000);
       return;
     }
 
     if (!weather_can_configure())
     {
-      Message(ICON_WARNING, GetLangText("@Settings"),
-              "Cannot apply settings. A weather request may still be running. "
-              "Try again shortly.",
-              4000);
+      Message(ICON_WARNING, tr(STR_SETTINGS), tr(STR_SETTINGS_BUSY), 4000);
       return;
     }
 
     if (!settings_store_save(draft))
     {
-      Message(ICON_WARNING, GetLangText("@Settings"),
-              "Cannot save settings. Previous settings were kept.", 4000);
+      Message(ICON_WARNING, tr(STR_SETTINGS),
+              tr(STR_SETTINGS_SAVE_FAILED), 4000);
       return;
     }
     /* No event dispatch occurs between the readiness check and application. */
@@ -338,8 +336,8 @@ static void close_settings(int save)
                            draft->refresh_minutes))
     {
       fprintf(stderr, "Settings: saved configuration could not be applied\n");
-      Message(ICON_WARNING, GetLangText("@Settings"),
-              "Settings were saved but could not be applied. Restart the app.", 4000);
+      Message(ICON_WARNING, tr(STR_SETTINGS),
+              tr(STR_SETTINGS_APPLY_FAILED), 4000);
       return;
     }
     weather_settings = *draft;
@@ -395,7 +393,11 @@ static void initial_lookup_completed(const GeoPlace *places, int count,
   }
   if (error != NULL || count != 1)
   {
-    initial_location_fail(error != NULL ? error : "Could not detect a city.");
+    if (error != NULL)
+    {
+      fprintf(stderr, "Initial location: %s\n", error);
+    }
+    initial_location_fail(tr(STR_LOCATION_NOT_DETECTED));
     return;
   }
   detected_settings = weather_settings;
@@ -423,37 +425,37 @@ static void initial_location_tick(void)
     {
       if (initial_network_status != NET_OK)
       {
-        initial_location_fail("Network connection failed.");
+        initial_location_fail(tr(STR_NETWORK_ERROR));
       }
       else
       {
         initial_location_state = LOCATION_LOOKUP;
         if (!geocoding_detect_ip(initial_lookup_completed))
         {
-          initial_location_fail("Cannot start IP location lookup.");
+          initial_location_fail(tr(STR_CANNOT_START_LOOKUP));
         }
       }
     }
     else if (time(NULL) >= initial_network_deadline)
     {
-      initial_location_fail("Network connection timed out.");
+      initial_location_fail(tr(STR_TIMEOUT));
     }
   }
   if (initial_location_state == LOCATION_READY)
   {
     if (!weather_can_configure())
     {
-      initial_location_fail("Weather is busy. Select a location in settings.");
+      initial_location_fail(tr(STR_SETTINGS_BUSY));
     }
     else if (!settings_store_save(&detected_settings))
     {
-      initial_location_fail("Cannot save detected location.");
+      initial_location_fail(tr(STR_SETTINGS_SAVE_FAILED));
     }
     else if (!weather_configure(detected_settings.latitude,
                                 detected_settings.longitude,
                                 detected_settings.refresh_minutes))
     {
-      initial_location_fail("Cannot apply saved location. Restart the app.");
+      initial_location_fail(tr(STR_SETTINGS_APPLY_FAILED));
     }
     else
     {
@@ -469,8 +471,7 @@ static void initial_location_tick(void)
     initial_location_state = LOCATION_IDLE;
     geocoding_cancel();
     open_settings();
-    Message(ICON_WARNING, GetLangText("@Settings"),
-            initial_location_error, 4000);
+    Message(ICON_WARNING, tr(STR_SETTINGS), initial_location_error, 4000);
     return;
   }
   SetHardTimer("initial-location", initial_location_tick, 500);
@@ -485,7 +486,7 @@ static void start_initial_location(void)
   fprintf(stderr, "Initial location: requesting approximate location from ipwho.is\n");
   if (now == (time_t)-1)
   {
-    initial_location_fail("Cannot read connection time.");
+    initial_location_fail(tr(STR_CANNOT_START_CONNECTION));
   }
   else
   {
@@ -493,7 +494,7 @@ static void start_initial_location(void)
     const int result = NetConnectAsync(initial_network_completed);
     if (result < 0 && !initial_network_done)
     {
-      initial_location_fail("Cannot start network connection.");
+      initial_location_fail(tr(STR_CANNOT_START_CONNECTION));
     }
   }
   SetHardTimer("initial-location", initial_location_tick, 500);
@@ -592,9 +593,8 @@ static int main_handler(int event, int par1, int par2)
     {
       settings_load_failed = 0;
       open_settings();
-      Message(ICON_WARNING, GetLangText("@Settings"),
-              "Cannot read saved settings. Select a location and save again.",
-              4000);
+      Message(ICON_WARNING, tr(STR_SETTINGS),
+              tr(STR_SETTINGS_UNREADABLE), 4000);
     }
     else if (initial_location_pending)
     {
