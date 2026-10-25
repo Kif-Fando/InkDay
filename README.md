@@ -18,6 +18,9 @@ power usage low.
 
 - **Clock and date** — large clock updated once per minute, localized day and month names
   from the reader's system language.
+- **Localized UI** — follows the reader's language: firmware translations where available,
+  plus built-in strings for Russian, Belarusian, Ukrainian, Polish, German, French,
+  Spanish, Italian, Dutch, Turkish and Chinese (Simplified); English otherwise.
 - **Battery** — charge percentage with an icon.
 - **Weather** from [Open-Meteo](https://open-meteo.com/) (no API key required):
   - current temperature and "feels like" temperature;
@@ -70,42 +73,20 @@ pocketbook/
 └── InkDay/          # this repository
 ```
 
-From the parent `pocketbook/` directory:
+From the repository directory:
 
 ```bash
-SDK="$PWD/pocketbook-sdk/SDK_481"
-SYSROOT="$SDK/arm-obreey-linux-gnueabi/sysroot"
-GCCLIB="$SDK/lib/gcc/arm-obreey-linux-gnueabi/4.8.1"
-
-for src in main weather settings geocoding settings_store i18n; do
-    clang --target=arm-linux-gnueabi --sysroot="$SYSROOT" -Wall -Wextra \
-        -c "InkDay/$src.c" -o "InkDay/$src.o" || exit 1
-done
-
-ld.lld --sysroot="$SYSROOT" \
-    -m armelf_linux_eabi \
-    --dynamic-linker=/lib/ld-linux.so.3 \
-    --allow-shlib-undefined \
-    "$SYSROOT/usr/lib/crt1.o" "$SYSROOT/usr/lib/crti.o" "$GCCLIB/crtbegin.o" \
-    InkDay/main.o InkDay/weather.o InkDay/settings.o \
-    InkDay/geocoding.o InkDay/settings_store.o InkDay/i18n.o \
-    -L"$SYSROOT/usr/lib" -L"$SYSROOT/lib" -L"$GCCLIB" \
-    -linkview \
-    --start-group "$SYSROOT/usr/lib/libjson-c.a" -lm -lc -lgcc --end-group \
-    "$GCCLIB/crtend.o" "$SYSROOT/usr/lib/crtn.o" \
-    -o InkDay/InkDay.app
+make            # build/InkDay.app
+make clean
 ```
 
-The result is a 32-bit ARM EABI5 dynamic executable:
+If the SDK is elsewhere, pass its path: `make SDK=/path/to/SDK_481`.
+Objects and the binary go to `build/`. Header dependencies are tracked automatically.
 
-```bash
-file InkDay/InkDay.app
-```
+The result is a 32-bit ARM EABI5 dynamic executable (`make` prints the `file` output).
 
 json-c is linked **statically** because the SDK and the device ship different json-c
 sonames.
-
-A Makefile is planned.
 
 ## Installation
 
@@ -120,11 +101,13 @@ With an SSH server running on the reader (for example Dropbear) and a host alias
 in `~/.ssh/config`:
 
 ```bash
-scp -O InkDay/InkDay.app pb:/mnt/ext1/applications/
-ssh -t pb 'cd /mnt/ext1/applications && chmod +x InkDay.app && exec ./InkDay.app'
+make deploy                 # or: make deploy PB_HOST=myreader
 ```
 
-`scp -O` uses the legacy SCP protocol, which Dropbear requires. Diagnostic messages are
+This builds the app, stops a running copy, uploads it with `scp -O` and starts it
+in the SSH session.
+
+The legacy SCP protocol (`scp -O`), which Dropbear requires, is used. Diagnostic messages are
 written to stderr and are visible in the SSH session.
 
 ## Files on the device
@@ -148,7 +131,7 @@ clear the weather cache.
 | `settings.c/.h` | Settings screen: keyboard input, city search, IP detection, refresh interval |
 | `geocoding.c/.h` | Asynchronous city search (Open-Meteo) and IP location (ipwho.is) |
 | `settings_store.c/.h` | Validated loading and atomic saving of settings |
-| `i18n.c/.h` | User-visible strings: firmware translations first, English fallback |
+| `i18n.c/.h` | User-visible strings: firmware translations, built-in dictionaries, English fallback |
 | `CONTINUE.md` | Development notes and plan (in Russian) |
 
 Network requests run `curl` in a child process and are polled by a timer, so the UI never
@@ -157,7 +140,7 @@ blocks.
 ## Roadmap
 
 - Own translations for labels the firmware does not provide.
-- Makefile and remote debugging with GDB.
+- Remote debugging with GDB.
 - Google Calendar widget.
 - Custom application name and icon in the reader's menu.
 - Home Assistant integration.
