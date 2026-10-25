@@ -1,1 +1,7 @@
 CONTINUE.md
+
+# Build output
+build/
+*.o
+*.d
+*.app
