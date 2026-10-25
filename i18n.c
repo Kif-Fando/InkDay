@@ -359,13 +359,25 @@ static const Language languages[] = {
 
 static const char *const *current_texts;
 
+static char loaded_code[16];
+
 void i18n_set_language(const char *code)
 {
-  current_texts = NULL;
-  if (code == NULL)
+  if (code == NULL || code[0] == '\0')
   {
-    return;
+    code = "en";
   }
+
+  /* InkView reads the firmware dictionary only at startup; reload it when the
+     reader language changed while InkDay was in the background. */
+  if (strcmp(code, loaded_code) != 0)
+  {
+    LoadLanguage(code);
+    snprintf(loaded_code, sizeof(loaded_code), "%s", code);
+    fprintf(stderr, "i18n: language %s\n", code);
+  }
+
+  current_texts = NULL;
 
   /* Accept both "ru" and regional forms such as "pt_br" or "zh-cn". */
   const size_t length = strcspn(code, "_-");
