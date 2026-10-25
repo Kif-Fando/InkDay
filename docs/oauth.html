@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<meta name="referrer" content="no-referrer">
+<title>InkDay</title>
+<style>
+  body { font-family: sans-serif; font-size: 2em; text-align: center; margin: 2em 1em; }
+</style>
+</head>
+<body>
+<p id="message">InkDay</p>
+<script>
+/* Google sign-in relay for InkDay on PocketBook readers.
+   The reader has no working loopback interface, so the app cannot receive the
+   OAuth redirect itself. Instead:
+   1. InkDay opens this page with #c=<PKCE challenge>&s=<state> (the firmware
+      browser launcher truncates long URLs, so the Google URL is built here).
+   2. Google redirects back here with ?code=...&state=...
+   3. The page saves the query as a download; InkDay reads it from Downloads.
+   The code is useless without the PKCE verifier, which never leaves the reader. */
+(function () {
+  var CLIENT_ID = "939059751381-uc9v268m2o08k9t77jacsdpatcuu78u5.apps.googleusercontent.com";
+  var SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+  var REDIRECT_URI = location.origin + location.pathname;
+  var message = document.getElementById("message");
+
+  var query = new URLSearchParams(location.search);
+  var fragment = new URLSearchParams(location.hash.slice(1));
+
+  if (query.has("code") || query.has("error")) {
+    var payload = location.search.slice(1);
+    history.replaceState(null, "", REDIRECT_URI);
+
+    var link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([payload + "\n"], { type: "text/plain" }));
+    link.download = "inkday-auth.txt";
+    document.body.appendChild(link);
+    link.click();
+
+    message.textContent = query.has("code")
+      ? "\u2713 Done. Return to InkDay."
+      : "Access was not granted. Return to InkDay.";
+    return;
+  }
+
+  var challenge = fragment.get("c") || "";
+  var state = fragment.get("s") || "";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(challenge) || !/^[A-Za-z0-9_-]{8,64}$/.test(state)) {
+    message.textContent = "Open this page from InkDay settings.";
+    return;
+  }
+
+  var params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: "code",
+    scope: SCOPE,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state: state,
+    access_type: "offline",
+    prompt: "consent"
+  });
+  location.replace("https://accounts.google.com/o/oauth2/v2/auth?" + params.toString());
+})();
+</script>
+</body>
+</html>
