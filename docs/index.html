@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InkDay — dashboard for PocketBook e-readers</title>
+<meta name="description" content="InkDay turns a PocketBook e-reader into an always-on dashboard with a clock, weather and Google Calendar events.">
+<link rel="icon" href="images/icon-120.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <img src="images/icon-512.png" alt="InkDay icon">
+  <div>
+    <h1>InkDay</h1>
+    <p>An always-on dashboard for PocketBook e-readers</p>
+    <nav>
+      <a href="https://github.com/Kif-Fando/InkDay">Source code</a>
+      <a href="privacy.html">Privacy policy</a>
+      <a href="terms.html">Terms of service</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <p>
+    InkDay is a free, open-source application for PocketBook e-readers. It turns the
+    reader into a quiet information screen for a desk or a wall: a large clock and date,
+    battery level, current weather and your upcoming Google Calendar events. The e-ink
+    screen keeps the picture without power, and InkDay updates it rarely and partially,
+    so the reader lasts for days.
+  </p>
+
+  <div class="screenshots">
+    <figure>
+      <img src="images/main.jpeg" alt="InkDay dashboard: clock, date, battery, weather and calendar events">
+      <figcaption>Dashboard</figcaption>
+    </figure>
+    <figure>
+      <img src="images/settings.jpeg" alt="InkDay settings: city, update interval and Google Calendar">
+      <figcaption>Settings</figcaption>
+    </figure>
+  </div>
+
+  <h2>Features</h2>
+  <ul>
+    <li>Large clock and date in the reader's language.</li>
+    <li>Current weather, "feels like" temperature and today's minimum and maximum
+      from <a href="https://open-meteo.com/">Open-Meteo</a>.</li>
+    <li>Google Calendar events for the next 1 to 7 days, grouped by day, with the event
+      in progress highlighted.</li>
+    <li>Night mode, 11 interface languages, offline cache of the last data.</li>
+  </ul>
+
+  <h2>Why InkDay asks for access to Google Calendar</h2>
+  <p>
+    When you press <b>Connect</b> in InkDay settings, Google asks you to allow InkDay to
+    <b>see and download your calendars</b> (read-only access,
+    <code>calendar.readonly</code>). InkDay needs it only to show the list of your
+    calendars, so you can pick which ones to display, and the events of the selected
+    calendars on the dashboard.
+  </p>
+  <p>
+    InkDay never changes, creates or deletes anything in your calendar. Your calendar data
+    goes directly from Google to your e-reader and is stored only there. There is no
+    InkDay server. You can disconnect at any time in InkDay settings or in your
+    <a href="https://myaccount.google.com/permissions">Google Account permissions</a>.
+    See the <a href="privacy.html">privacy policy</a> for details.
+  </p>
+
+  <h2>Installation</h2>
+  <p>
+    Copy <code>InkDay.app</code> to the <code>applications</code> folder on the reader
+    and start it from the Applications menu. Building from source and other details are
+    described in the <a href="https://github.com/Kif-Fando/InkDay#readme">README</a>.
+  </p>
+</main>
+
+<footer>
+  InkDay is an independent project and is not affiliated with PocketBook or Google.
+  Google Calendar is a trademark of Google LLC.
+  · <a href="privacy.html">Privacy policy</a>
+  · <a href="terms.html">Terms of service</a>
+</footer>
+</body>
+</html>
