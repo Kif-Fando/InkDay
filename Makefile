@@ -3,7 +3,7 @@
 #   make            build build/InkDay.app
 #   make deploy     build, stop the running copy, upload and start it over SSH
 #   make clean      remove build/
-#   make release VERSION=1.0  clean build, publish build/InkDay.app as a GitHub
+#   make release VERSION=1.0  clean build, publish build/InkDay.zip as a GitHub
 #                      release (needs gh, committed and pushed changes)
 #   make install-icon  add InkDay with its icon to the reader's application menu
 #                      (once; backs up view.json, then restart the reader)
@@ -122,14 +122,18 @@ deploy: $(APP) stop
 	scp -O $(APP) $(PB_HOST):$(PB_DIR)/
 	ssh -t $(PB_HOST) 'cd $(PB_DIR) && chmod +x InkDay.app && exec ./InkDay.app'
 
-# The website links to releases/latest/download/InkDay.app, so the asset name
-# must stay InkDay.app. --target makes gh fail if HEAD is not pushed.
+# GitHub refuses .app assets, so the app is shipped inside InkDay.zip. The
+# website links to releases/latest/download/InkDay.zip, so keep that name.
+# --target makes gh fail if HEAD is not pushed.
 release:
 	@test -n "$(VERSION)" || { echo "Usage: make release VERSION=1.0"; exit 1; }
 	@git diff --quiet HEAD || { echo "Commit your changes before a release."; exit 1; }
 	$(MAKE) clean
 	$(MAKE) DEBUG=0
-	gh release create v$(VERSION) build/InkDay.app --target "$$(git rev-parse HEAD)" \
+	python3 -c 'import zipfile, sys; \
+		zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED).write(sys.argv[2], "InkDay.app")' \
+		build/InkDay.zip build/InkDay.app
+	gh release create v$(VERSION) build/InkDay.zip --target "$$(git rev-parse HEAD)" \
 		--title "InkDay $(VERSION)" --generate-notes
 
 # The firmware's desktop format is documented in view.json itself. The original
