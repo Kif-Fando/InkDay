@@ -4,11 +4,14 @@
 Grayscale only, so it looks the same on e-ink. Drawn at 8x and downscaled for
 smooth edges. Requires Pillow (pip install pillow).
 
-Usage: tools/make-icon.py [output directory]   (default: docs/images)
+Usage: tools/make-icon.py
+
+Writes the website/Google logo to docs/images (icon-120.png, icon-512.png) and
+the reader's menu icons to icons/ (InkDay.bmp and the pressed variant
+InkDay_f.bmp: 8-bit grayscale BMP, line art like the firmware's own icons).
 """
 import math
 import os
-import sys
 
 from PIL import Image, ImageDraw
 
@@ -17,6 +20,7 @@ BASE = 120
 BLACK = 0
 WHITE = 255
 GRAY = 150
+MENU_ICON_SIZE = 100
 
 
 def draw_icon(size_px):
@@ -58,12 +62,60 @@ def draw_icon(size_px):
     return image.resize((size_px, size_px), Image.LANCZOS)
 
 
+def draw_menu_icon(size_px, pressed=False):
+    """Line-art variant matching the firmware's outlined menu icons.
+
+    Black strokes on white; the firmware inverts it in dark mode. The pressed
+    variant is drawn white on a black rounded square.
+    """
+    s = MENU_ICON_SIZE * SCALE
+    u = SCALE  # one unit = one pixel of the 100 px menu icon
+    ink, paper = (WHITE, BLACK) if pressed else (BLACK, WHITE)
+    image = Image.new("L", (s, s), WHITE)
+    d = ImageDraw.Draw(image)
+    if pressed:
+        d.rounded_rectangle((4 * u, 4 * u, 96 * u, 96 * u), radius=14 * u, fill=BLACK)
+    w = 3 * u
+
+    # Calendar sheet outline and binder rings.
+    d.rounded_rectangle((18 * u, 22 * u, 82 * u, 84 * u), radius=7 * u, outline=ink, width=w)
+    for cx in (36 * u, 64 * u):
+        d.rounded_rectangle((cx - 3 * u, 15 * u, cx + 3 * u, 29 * u), radius=3 * u,
+                            fill=paper, outline=ink, width=w)
+
+    # Sun outline with rays.
+    sun_x, sun_y, r = 36 * u, 44 * u, 6 * u
+    for i in range(8):
+        a = i * math.pi / 4
+        d.line((sun_x + math.cos(a) * (r + 3 * u), sun_y + math.sin(a) * (r + 3 * u),
+                sun_x + math.cos(a) * (r + 7 * u), sun_y + math.sin(a) * (r + 7 * u)),
+               fill=ink, width=w)
+    d.ellipse((sun_x - r, sun_y - r, sun_x + r, sun_y + r), outline=ink, width=w)
+
+    # Temperature line and two event rows.
+    d.line((54 * u, 41 * u, 72 * u, 41 * u), fill=ink, width=w)
+    d.line((54 * u, 48 * u, 66 * u, 48 * u), fill=ink, width=w)
+    d.rounded_rectangle((26 * u, 60 * u, 74 * u, 68 * u), radius=2 * u, fill=ink)
+    d.ellipse((26 * u, 72 * u, 31 * u, 77 * u), fill=ink)
+    d.line((36 * u, 74.5 * u, 70 * u, 74.5 * u), fill=ink, width=w)
+
+    return image.resize((size_px, size_px), Image.LANCZOS)
+
+
 def main():
-    out_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join("docs", "images")
-    os.makedirs(out_dir, exist_ok=True)
+    web_dir = os.path.join("docs", "images")
+    os.makedirs(web_dir, exist_ok=True)
     for size in (120, 512):
-        path = os.path.join(out_dir, f"icon-{size}.png")
+        path = os.path.join(web_dir, f"icon-{size}.png")
         draw_icon(size).save(path, optimize=True)
+        print(path)
+
+    menu_dir = "icons"
+    os.makedirs(menu_dir, exist_ok=True)
+    for name, image in (("InkDay.bmp", draw_menu_icon(MENU_ICON_SIZE)),
+                        ("InkDay_f.bmp", draw_menu_icon(MENU_ICON_SIZE, pressed=True))):
+        path = os.path.join(menu_dir, name)
+        image.save(path)
         print(path)
 
 

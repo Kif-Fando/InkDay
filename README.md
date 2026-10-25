@@ -175,6 +175,22 @@ in the SSH session.
 The legacy SCP protocol (`scp -O`), which Dropbear requires, is used. Diagnostic messages are
 written to stderr and are visible in the SSH session.
 
+### Menu icon
+
+Without extra setup the reader lists InkDay with a generic icon. To give it its own:
+
+```bash
+make install-icon
+```
+
+then restart the reader. This copies `icons/InkDay.bmp` and `icons/InkDay_f.bmp`
+(pressed state) to `applications/icons/` and adds a `U_InkDay` entry to the "General"
+group of `system/config/desktop/view.json`. The original file is saved as
+`view.json.inkday-backup` next to it; copy it back to undo. The desktop format is
+firmware-specific (documented in the comments of `view.json` itself) and was tested on
+one device only. Over USB, the same can be done by hand: copy the two BMP files and
+merge the entry printed by `tools/desktop-entry.py` into `view.json`.
+
 ## Files on the device
 
 | Path | Purpose |
@@ -207,7 +223,9 @@ cache. **Disconnect** in settings deletes the Google token and the calendar cach
 | `file_util.c/.h` | Atomic file writes and bounded file reads |
 | `i18n.c/.h` | User-visible strings: firmware translations, built-in dictionaries, English fallback |
 | `docs/` | GitHub Pages site: home page, privacy policy, terms, sign-in relay `oauth.html`, images |
-| `tools/make-icon.py` | Draws the icon (`docs/images/icon-120.png`, `icon-512.png`); needs Pillow |
+| `tools/make-icon.py` | Draws the icon: website/Google logo in `docs/images/` and menu icons in `icons/`; needs Pillow |
+| `tools/desktop-entry.py` | Adds InkDay to a copy of the reader's `view.json` (used by `make install-icon`) |
+| `icons/` | Menu icons for the reader (8-bit grayscale BMP, 100×100, line art like the firmware icons) |
 | `CONTINUE.md` | Development notes and plan (in Russian) |
 
 Network requests run `curl` in a child process and are polled by a timer, so the UI never
@@ -232,7 +250,6 @@ Screenshots live in `docs/images/` and are shared by the website and this README
 
 ## Roadmap
 
-- Application name and icon in the reader's menu.
 - Home Assistant integration.
 
 ## Third-party services

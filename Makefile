@@ -3,6 +3,8 @@
 #   make            build build/InkDay.app
 #   make deploy     build, stop the running copy, upload and start it over SSH
 #   make clean      remove build/
+#   make install-icon  add InkDay with its icon to the reader's application menu
+#                      (once; backs up view.json, then restart the reader)
 #
 # Remote debugging (gdbserver on the reader, gdb-multiarch on the PC):
 #   make gdbserver-install  copy the SDK's static gdbserver to the reader (once)
@@ -28,6 +30,7 @@ CFLAGS  ?= -Wall -Wextra
 
 PB_HOST ?= pb
 PB_DIR  ?= /mnt/ext1/applications
+PB_DESKTOP ?= /mnt/ext1/system/config/desktop
 
 GDB            ?= gdb-multiarch
 GDB_PORT       ?= 2345
@@ -51,7 +54,7 @@ OBJS    := $(SRCS:%.c=$(BUILD)/%.o)
 GOOGLE_CLIENT_ID     ?= $(google_web_client_id)
 GOOGLE_CLIENT_SECRET ?= $(google_web_client_secret)
 
-.PHONY: all deploy clean stop gdbserver-install debug gdb
+.PHONY: all deploy clean stop install-icon gdbserver-install debug gdb
 
 all: $(APP)
 
@@ -116,6 +119,17 @@ stop:
 deploy: $(APP) stop
 	scp -O $(APP) $(PB_HOST):$(PB_DIR)/
 	ssh -t $(PB_HOST) 'cd $(PB_DIR) && chmod +x InkDay.app && exec ./InkDay.app'
+
+# The firmware's desktop format is documented in view.json itself. The original
+# is kept as view.json.inkday-backup; copy it back to undo.
+install-icon: | $(BUILD)
+	scp -O $(PB_HOST):$(PB_DESKTOP)/view.json $(BUILD)/view.json.orig
+	python3 tools/desktop-entry.py $(BUILD)/view.json.orig $(BUILD)/view.json
+	ssh $(PB_HOST) 'mkdir -p $(PB_DIR)/icons && cd $(PB_DESKTOP) && \
+		{ [ -e view.json.inkday-backup ] || cp view.json view.json.inkday-backup; }'
+	scp -O icons/InkDay.bmp icons/InkDay_f.bmp $(PB_HOST):$(PB_DIR)/icons/
+	scp -O $(BUILD)/view.json $(PB_HOST):$(PB_DESKTOP)/view.json
+	@echo "Done. Restart the reader to see the new icon."
 
 gdbserver-install:
 	ssh $(PB_HOST) 'mkdir -p $(dir $(PB_GDBSERVER))'
