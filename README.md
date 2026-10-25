@@ -8,6 +8,12 @@ power usage low.
 > Status: early development, tested on a single PocketBook device (1072×1448 portrait
 > screen). The layout is not yet adaptive to other screen sizes.
 
+## Screenshots
+
+| Dashboard | Settings |
+|:---------:|:--------:|
+| <img src="pics/main.jpeg" alt="InkDay dashboard: clock, date, battery and weather" width="400"> | <img src="pics/settings.jpeg" alt="InkDay settings: city search and update interval" width="400"> |
+
 ## Features
 
 - **Clock and date** — large clock updated once per minute, localized day and month names
@@ -71,7 +77,7 @@ SDK="$PWD/pocketbook-sdk/SDK_481"
 SYSROOT="$SDK/arm-obreey-linux-gnueabi/sysroot"
 GCCLIB="$SDK/lib/gcc/arm-obreey-linux-gnueabi/4.8.1"
 
-for src in main weather settings geocoding settings_store; do
+for src in main weather settings geocoding settings_store i18n; do
     clang --target=arm-linux-gnueabi --sysroot="$SYSROOT" -Wall -Wextra \
         -c "InkDay/$src.c" -o "InkDay/$src.o" || exit 1
 done
@@ -82,7 +88,7 @@ ld.lld --sysroot="$SYSROOT" \
     --allow-shlib-undefined \
     "$SYSROOT/usr/lib/crt1.o" "$SYSROOT/usr/lib/crti.o" "$GCCLIB/crtbegin.o" \
     InkDay/main.o InkDay/weather.o InkDay/settings.o \
-    InkDay/geocoding.o InkDay/settings_store.o \
+    InkDay/geocoding.o InkDay/settings_store.o InkDay/i18n.o \
     -L"$SYSROOT/usr/lib" -L"$SYSROOT/lib" -L"$GCCLIB" \
     -linkview \
     --start-group "$SYSROOT/usr/lib/libjson-c.a" -lm -lc -lgcc --end-group \
@@ -142,6 +148,7 @@ clear the weather cache.
 | `settings.c/.h` | Settings screen: keyboard input, city search, IP detection, refresh interval |
 | `geocoding.c/.h` | Asynchronous city search (Open-Meteo) and IP location (ipwho.is) |
 | `settings_store.c/.h` | Validated loading and atomic saving of settings |
+| `i18n.c/.h` | User-visible strings: firmware translations first, English fallback |
 | `CONTINUE.md` | Development notes and plan (in Russian) |
 
 Network requests run `curl` in a child process and are polled by a timer, so the UI never
@@ -149,8 +156,7 @@ blocks.
 
 ## Roadmap
 
-- Localization of InkDay's own labels (system translations first, own dictionary as
-  fallback).
+- Own translations for labels the firmware does not provide.
 - Makefile and remote debugging with GDB.
 - Google Calendar widget.
 - Custom application name and icon in the reader's menu.
