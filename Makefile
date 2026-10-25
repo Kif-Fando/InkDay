@@ -1,4 +1,4 @@
-# InkDay build for PocketBook (SDK_481, ARM EABI) with Clang + LLD.
+# InkDay build for PocketBook Verse Pro / Verse Pro Color (SDK_481, ARM EABI).
 #
 #   make            build build/InkDay.app
 #   make deploy     build, stop the running copy, upload and start it over SSH

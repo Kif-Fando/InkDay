@@ -4,13 +4,14 @@
 
 Website: [inkday.fandorka.eu](https://inkday.fandorka.eu/)
 
-A native dashboard application for PocketBook Verse Pro e-reader, written in C on top of the
+A native dashboard application for the PocketBook Verse Pro, written in C on top of the
 InkView SDK. InkDay turns the reader into an always-on information screen with a large
 clock, date, battery level, current weather and upcoming Google Calendar events, drawn
 with partial e-ink updates to keep power usage low.
 
-> Status: early development, tested on a single PocketBook device (Verse Pro, 1072×1448 portrait
-> screen). The layout is not yet adaptive to other screen sizes.
+> Status: early development, tested on the PocketBook Verse Pro (1072×1448 portrait
+> screen). Verse Pro Color is expected to work with the same layout, but has not been
+> tested separately. Other PocketBook models are not supported yet.
 
 ## Screenshots
 
@@ -78,7 +79,8 @@ See the [privacy policy](https://inkday.fandorka.eu/privacy.html).
 
 ### Device
 
-- PocketBook e-reader with InkView firmware (developed on firmware with `libinkview`
+- PocketBook Verse Pro (tested), or Verse Pro Color (expected compatibility, not
+  separately tested), with InkView firmware (developed on firmware with `libinkview`
   exposing `SetPanelInvert`; older firmware still works, but the panel stays light in
   night mode).
 - `/usr/bin/curl` with HTTPS support on the device (present in current firmware).

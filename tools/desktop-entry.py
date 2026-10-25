@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add InkDay with its own icon to the PocketBook desktop configuration.
+"""Add InkDay with its icon to the PocketBook Verse Pro / Verse Pro Color menu.
 
 Reads a copy of /mnt/ext1/system/config/desktop/view.json, adds the user
 application entry "U_InkDay" (the format is documented in the file's own
