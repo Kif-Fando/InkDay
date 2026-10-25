@@ -1,9 +1,13 @@
 # InkDay
 
+<img src="docs/images/icon-512.png" alt="InkDay icon" width="96" align="right">
+
+Website: [inkday.fandorka.eu](https://inkday.fandorka.eu/)
+
 A native dashboard application for PocketBook e-readers, written in C on top of the
 InkView SDK. InkDay turns the reader into an always-on information screen with a large
-clock, date, battery level and current weather, drawn with partial e-ink updates to keep
-power usage low.
+clock, date, battery level, current weather and upcoming Google Calendar events, drawn
+with partial e-ink updates to keep power usage low.
 
 > Status: early development, tested on a single PocketBook device (1072×1448 portrait
 > screen). The layout is not yet adaptive to other screen sizes.
@@ -12,7 +16,7 @@ power usage low.
 
 | Dashboard | Settings |
 |:---------:|:--------:|
-| <img src="pics/main.jpeg" alt="InkDay dashboard: clock, date, battery and weather" width="400"> | <img src="pics/settings.jpeg" alt="InkDay settings: city search and update interval" width="400"> |
+| <img src="docs/images/main.jpeg" alt="InkDay dashboard: clock, date, battery and weather" width="400"> | <img src="docs/images/settings.jpeg" alt="InkDay settings: city search and update interval" width="400"> |
 
 ## Features
 
@@ -33,14 +37,42 @@ power usage low.
 - **Automatic location on first run** — when no city is configured, InkDay detects an
   approximate location by IP address ([ipwho.is](https://ipwho.is/)) in the background and
   saves it. Settings are opened only if detection fails.
+- **Google Calendar** (read-only):
+  - events of the selected calendars for 1, 3, 5 or 7 days, grouped by day
+    ("Today", "Tomorrow", "Tuesday, 27.10");
+  - time range, title, location and a per-calendar marker shape;
+  - the event in progress is highlighted (inverted row);
+  - several pages with a page indicator: tap the left/right half of the list, swipe, or
+    use the page-turn buttons;
+  - cached on the device, so events are shown immediately after start and offline.
+- **One refresh schedule** — weather and calendar are updated with the same interval;
+  the refresh button under the weather updates both.
 - **Settings screen** — city search with disambiguation by region/country, detection by
-  IP, refresh interval of 15, 30, 60 or 120 minutes.
+  IP, refresh interval of 15, 30, 60 or 120 minutes; Google account connection, number of
+  days and calendar selection (paged list, also switchable by swipe).
 - **Night mode** — follows the reader's inverted screen mode, including the system status
   panel.
 - **Power-aware** — no per-second timers; one timer until the next request, network is
   brought up through the system network manager only when needed.
 
 Tap the screen to show or hide the system status panel. Tap the gear icon to open settings.
+
+### Connecting Google Calendar
+
+1. Open settings and press **Connect** in the Google Calendar section.
+2. The reader's browser opens Google sign-in. Allow read-only access to calendars.
+3. The final page says "Done" and silently downloads `inkday-auth.txt` to `Downloads`.
+   Return to InkDay: it picks up the file, deletes it and loads the calendar list.
+4. Select calendars and the number of days, then press **Save**.
+
+The reader cannot receive an OAuth redirect itself (its loopback interface is down for
+applications), so sign-in goes through a static relay page,
+[`docs/oauth.html`](docs/oauth.html), served by GitHub Pages. The page only forwards the
+authorization code; it is useless without the PKCE verifier, which never leaves the
+reader. Until the app passes Google verification, the consent screen shows
+"Google hasn't verified this app": choose **Continue**. If Google revokes the access
+(for example, it was removed in the Google Account), InkDay shows "Reconnect required".
+See the [privacy policy](https://inkday.fandorka.eu/privacy.html).
 
 ## Requirements
 
@@ -74,6 +106,23 @@ pocketbook/
 ```
 
 From the repository directory:
+
+Google OAuth client credentials are compiled in from a `.env` file in the repository
+directory (never commit it):
+
+```text
+google_web_client_id=....apps.googleusercontent.com
+google_web_client_secret=GOCSPX-...
+```
+
+The client must be of type *Web application* with the relay page as its authorized
+redirect URI (`https://inkday.fandorka.eu/oauth.html`, set as `GOOGLE_RELAY_URL` in
+`google_auth.c`); the same client ID is set in `docs/oauth.html`. A fork must host the
+page on its own domain and change both. The project needs the Google Calendar API enabled, the
+`calendar.readonly` scope, and its publishing status set to *In production*: in *Testing*
+status Google issues refresh tokens that expire after 7 days (and only test users can
+sign in). Publishing requires the branding pages described below.
+The build stops with a clear message if the credentials are missing.
 
 ```bash
 make            # build/InkDay.app
@@ -133,10 +182,14 @@ written to stderr and are visible in the SSH session.
 | `/mnt/ext1/applications/InkDay.app` | Application |
 | `/mnt/ext1/system/config/inkday.json` | Settings: city, coordinates, refresh interval |
 | `/mnt/ext1/system/config/inkday-weather.json` | Last successful weather result |
+| `/mnt/ext1/system/config/inkday-calendar.json` | Calendar settings: days, selected calendars |
+| `/mnt/ext1/system/config/inkday-calendar-cache.json` | Calendar list and events of the last sync |
+| `/mnt/ext1/system/config/inkday-google.json` | Google refresh token (mode 0600) |
+| `/mnt/ext1/system/config/inkday-google-signin.txt` | Pending sign-in (PKCE verifier), removed when done |
 
-Both JSON files are written atomically (temporary file + `rename`). Delete
-`inkday.json` to repeat first-run location detection; delete `inkday-weather.json` to
-clear the weather cache.
+All files are written atomically (temporary file + `rename`). Delete `inkday.json` to
+repeat first-run location detection; delete `inkday-weather.json` to clear the weather
+cache. **Disconnect** in settings deletes the Google token and the calendar cache.
 
 ## Source layout
 
@@ -147,16 +200,39 @@ clear the weather cache.
 | `settings.c/.h` | Settings screen: keyboard input, city search, IP detection, refresh interval |
 | `geocoding.c/.h` | Asynchronous city search (Open-Meteo) and IP location (ipwho.is) |
 | `settings_store.c/.h` | Validated loading and atomic saving of settings |
+| `calendar.c/.h` | Google Calendar: sync state machine, cache, settings, drawing and paging |
+| `google_auth.c/.h` | OAuth 2.0 with PKCE through the relay page, token storage and refresh |
+| `http_job.c/.h` | Generic asynchronous HTTPS request via `curl` (secrets passed in a temporary config file, not argv) |
+| `sha256.c/.h` | SHA-256 for the PKCE code challenge |
+| `file_util.c/.h` | Atomic file writes and bounded file reads |
 | `i18n.c/.h` | User-visible strings: firmware translations, built-in dictionaries, English fallback |
+| `docs/` | GitHub Pages site: home page, privacy policy, terms, sign-in relay `oauth.html`, images |
+| `tools/make-icon.py` | Draws the icon (`docs/images/icon-120.png`, `icon-512.png`); needs Pillow |
 | `CONTINUE.md` | Development notes and plan (in Russian) |
 
 Network requests run `curl` in a child process and are polled by a timer, so the UI never
 blocks.
 
+## Website and Google branding
+
+The `docs/` folder is published by GitHub Pages (branch `master`, folder `/docs`) under the
+custom domain `inkday.fandorka.eu` (`docs/CNAME`; the domain is verified in Google
+Search Console, which branding verification requires) and
+provides what the Google Auth Platform *Branding* page asks for:
+
+| Field | Value |
+|-------|-------|
+| App logo | `docs/images/icon-120.png` (120×120) |
+| Application home page | `https://inkday.fandorka.eu/` |
+| Privacy policy | `https://inkday.fandorka.eu/privacy.html` |
+| Terms of service | `https://inkday.fandorka.eu/terms.html` |
+| Authorized domain | `fandorka.eu` |
+
+Screenshots live in `docs/images/` and are shared by the website and this README.
+
 ## Roadmap
 
-- Google Calendar widget.
-- Custom application name and icon in the reader's menu.
+- Application name and icon in the reader's menu.
 - Home Assistant integration.
 
 ## Third-party services
@@ -166,6 +242,8 @@ blocks.
 - City search: Open-Meteo Geocoding API.
 - IP-based location: [ipwho.is](https://ipwho.is/). The reader's public IP address is
   sent to this service on first run or when "Detect by IP" is used.
+- Calendar: [Google Calendar API](https://developers.google.com/calendar), read-only
+  access granted by the user.
 
 ## License
 

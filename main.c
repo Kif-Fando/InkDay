@@ -1,10 +1,12 @@
 #include <inkview.h>
 #include "weather.h"
+#include "calendar.h"
 #include "settings.h"
 #include "settings_store.h"
 #include "geocoding.h"
 #include "i18n.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -30,6 +32,28 @@ static ifont *clock_font;
 static ifont *day_font;
 static ifont *date_font;
 static ifont *weather_footer_font;
+static ifont *calendar_header_font;
+static ifont *calendar_small_font;
+static ifont *settings_bold_font;
+static int touch_down;
+static int touch_x;
+static int touch_y;
+
+enum
+{
+  SWIPE_MIN_DISTANCE = 100
+};
+
+/* OpenFont's last argument is antialiasing, so bold needs a bold face. */
+static ifont *open_bold_font(int size)
+{
+  ifont *font = OpenFont("Roboto-Bold", size, 1);
+  if (font == NULL)
+  {
+    font = OpenFont(DEFAULTFONTB, size, 1);
+  }
+  return font;
+}
 static int foreground;
 static int full_redraw = 1;
 static int panel_visible;
@@ -81,6 +105,28 @@ static void configure_weather_view(void)
                   : weather_settings.city,
       .region = weather_settings.region};
   weather_set_view(&view);
+}
+
+/* The calendar fills the space between the weather block and the bottom edge. */
+static void configure_calendar_view(void)
+{
+  const int y = HEADER_Y + HEADER_HEIGHT + 20 + WEATHER_HEIGHT + 20;
+  int height = ScreenHeight() - y - 10;
+  if (panel_visible)
+  {
+    height -= PanelHeight();
+  }
+  const CalendarView view = {
+      .x = HEADER_X,
+      .y = y,
+      .width = ScreenWidth() - HEADER_X - HEADER_RIGHT_MARGIN,
+      .height = height,
+      .foreground_color = foreground_color,
+      .background_color = background_color,
+      .header_font = calendar_header_font,
+      .event_font = weather_footer_font,
+      .small_font = calendar_small_font};
+  calendar_set_view(&view);
 }
 
 static void draw_clock(const char *text)
@@ -217,6 +263,8 @@ static void draw_header(const char *time_text, const struct tm *local)
   {
     configure_weather_view();
     weather_draw();
+    configure_calendar_view();
+    calendar_draw();
     if (panel_visible)
     {
       if (SetPanelInvert != NULL)
@@ -277,6 +325,7 @@ static void update_clock(void)
   const int delay_ms = (60 - local_time.tm_sec) * 1000 - (int)(now.tv_usec / 1000);
 
   draw_header(text, &local_time);
+  calendar_check_day();
 
   /* Align the next update to the next minute rather than waiting 60 seconds. */
   SetHardTimer("clock-minute", update_clock, delay_ms);
@@ -291,12 +340,13 @@ static void set_panel_visible(int visible)
 
 static void open_settings(void)
 {
-  settings_begin(&weather_settings);
+  settings_begin(&weather_settings, calendar_get_settings());
   settings_visible = 1;
 
   /* Suspend dashboard drawing without discarding weather data. */
   ClearTimer(update_clock);
   weather_set_active(0);
+  calendar_set_mode(CALENDAR_SETTINGS);
 
   /* Hide the panel temporarily, preserving the dashboard preference. */
   SetPanelType(PANEL_DISABLED);
@@ -325,6 +375,14 @@ static void close_settings(int save)
       return;
     }
 
+    /* Calendar settings are independent of weather requests: apply them first. */
+    if (!calendar_apply_settings(settings_get_calendar_draft()))
+    {
+      Message(ICON_WARNING, tr(STR_SETTINGS),
+              tr(STR_SETTINGS_SAVE_FAILED), 4000);
+      return;
+    }
+
     if (!settings_store_save(draft))
     {
       Message(ICON_WARNING, tr(STR_SETTINGS),
@@ -341,6 +399,7 @@ static void close_settings(int save)
       return;
     }
     weather_settings = *draft;
+    calendar_set_interval(weather_settings.refresh_minutes);
     fprintf(stderr, "Settings: applied city=%s, interval=%d min\n",
             weather_settings.city, weather_settings.refresh_minutes);
   }
@@ -351,6 +410,7 @@ static void close_settings(int save)
   full_redraw = 1;
   update_clock();
   weather_set_active(weather_settings.location_selected);
+  calendar_set_mode(CALENDAR_DASHBOARD);
 }
 
 static void initial_location_tick(void);
@@ -460,6 +520,7 @@ static void initial_location_tick(void)
     else
     {
       weather_settings = detected_settings;
+      calendar_set_interval(weather_settings.refresh_minutes);
       initial_location_state = LOCATION_IDLE;
       refresh_location_block();
       weather_set_active(1);
@@ -556,6 +617,22 @@ static int main_handler(int event, int par1, int par2)
       return 0;
     }
 
+    calendar_header_font = OpenFont("Roboto", 36, 1);
+    calendar_small_font = OpenFont("Roboto", 28, 0);
+    if (calendar_header_font == NULL || calendar_small_font == NULL)
+    {
+      fprintf(stderr, "Cannot open calendar fonts\n");
+      CloseApp();
+      return 0;
+    }
+
+    /* Optional: settings fall back to the regular font without it. */
+    settings_bold_font = open_bold_font(45);
+    settings_set_bold_font(settings_bold_font);
+
+    calendar_init();
+    calendar_set_interval(weather_settings.refresh_minutes);
+
     set_panel_visible(0);
     /* SSH launches need explicit activation to bring the app to the front. */
     SetActiveTask(GetCurrentTask(), 0);
@@ -610,6 +687,8 @@ static int main_handler(int event, int par1, int par2)
       initial_location_tick();
     }
     weather_set_active(!settings_visible && weather_settings.location_selected);
+    /* Also picks up a Google sign-in completed in the browser meanwhile. */
+    calendar_set_mode(settings_visible ? CALENDAR_SETTINGS : CALENDAR_DASHBOARD);
     break;
 
   case EVT_SHOW:
@@ -629,6 +708,13 @@ static int main_handler(int event, int par1, int par2)
     settings_set_active(0);
     ClearTimer(update_clock);
     weather_set_active(0);
+    calendar_set_mode(CALENDAR_OFF);
+    break;
+
+  case EVT_POINTERDOWN:
+    touch_down = 1;
+    touch_x = par1;
+    touch_y = par2;
     break;
 
   case EVT_POINTERUP:
@@ -639,6 +725,21 @@ static int main_handler(int event, int par1, int par2)
         /* Avoid concurrent network-manager requests from settings. */
         fprintf(stderr, "Initial location: please wait for detection to finish\n");
         break;
+      }
+
+      const int dx = par1 - touch_x;
+      const int dy = par2 - touch_y;
+      const int swiped = touch_down && abs(dx) >= SWIPE_MIN_DISTANCE && abs(dx) > 2 * abs(dy);
+      touch_down = 0;
+      if (swiped)
+      {
+        /* Swiping left turns to the next page, like in books. */
+        const int direction = dx < 0 ? 1 : -1;
+        if (settings_visible ? settings_handle_swipe(touch_x, touch_y, direction)
+                             : calendar_handle_swipe(touch_x, touch_y, direction))
+        {
+          break;
+        }
       }
       if (settings_visible)
       {
@@ -662,12 +763,27 @@ static int main_handler(int event, int par1, int par2)
 
       if (weather_settings.location_selected && weather_handle_tap(par1, par2))
       {
+        /* The refresh button updates everything on the dashboard. */
+        calendar_sync_now();
+        break;
+      }
+
+      if (calendar_handle_tap(par1, par2))
+      {
         break;
       }
 
       set_panel_visible(!panel_visible);
       full_redraw = 1;
       update_clock();
+    }
+    break;
+
+  case EVT_KEYPRESS:
+    /* Page-turn buttons switch calendar pages on the dashboard. */
+    if (foreground && !settings_visible && calendar_handle_key(par1))
+    {
+      return 1;
     }
     break;
 
@@ -679,6 +795,23 @@ static int main_handler(int event, int par1, int par2)
     ClearTimer(update_clock);
     /* Stop widget callbacks before releasing their borrowed fonts. */
     weather_shutdown();
+    calendar_shutdown();
+    if (calendar_header_font != NULL)
+    {
+      CloseFont(calendar_header_font);
+      calendar_header_font = NULL;
+    }
+    if (calendar_small_font != NULL)
+    {
+      CloseFont(calendar_small_font);
+      calendar_small_font = NULL;
+    }
+    settings_set_bold_font(NULL);
+    if (settings_bold_font != NULL)
+    {
+      CloseFont(settings_bold_font);
+      settings_bold_font = NULL;
+    }
     if (clock_font != NULL)
     {
       CloseFont(clock_font);

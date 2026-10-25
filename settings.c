@@ -18,14 +18,30 @@ enum
   INTERVAL_Y = 510,
   INTERVAL_HEIGHT = 80,
   RESULTS_Y = 660,
-  RESULT_HEIGHT = 105
+  RESULT_HEIGHT = 105,
+  /* The calendar section shares the area below the weather with search results. */
+  CAL_SEPARATOR_Y = 665,
+  CAL_HEADER_Y = 680,
+  CAL_HEADER_HEIGHT = 80,
+  CAL_STATUS_Y = 770,
+  CAL_STATUS_HEIGHT = 55,
+  CAL_DAYS_Y = 835,
+  CAL_DAYS_HEIGHT = 75,
+  CAL_LIST_Y = 930,
+  CAL_ROW_HEIGHT = 60,
+  CAL_CHECKBOX = 36,
+  CAL_PAGER_WIDTH = 200
 };
 
 static const int refresh_options[] = {15, 30, 60, 120};
+static const int day_options[] = {1, 3, 5, 7};
 
 static WeatherSettings draft;
+static CalendarSettings calendar_draft;
+static int calendar_page;
 static char city_input[sizeof(draft.city)];
 static ifont *settings_font;
+static ifont *settings_bold_font;
 static int settings_foreground;
 static int settings_background;
 static int screen_open;
@@ -209,20 +225,308 @@ static int interval_width(void)
   return (ScreenWidth() - 2 * SETTINGS_MARGIN - 3 * SETTINGS_GAP) / 4;
 }
 
-void settings_begin(const WeatherSettings *current)
+void settings_begin(const WeatherSettings *current, const CalendarSettings *calendar)
 {
   settings_end();
   draft = *current;
+  calendar_draft = *calendar;
+  calendar_page = 0;
   screen_open = 1;
   screen_active = 1;
   result_count = 0;
   selected_result = -1;
   search_message[0] = '\0';
+  calendar_set_listener(redraw_settings);
 }
 
 const WeatherSettings *settings_get_draft(void)
 {
   return &draft;
+}
+
+const CalendarSettings *settings_get_calendar_draft(void)
+{
+  return &calendar_draft;
+}
+
+static int calendar_label_width(void)
+{
+  return (ScreenWidth() - 2 * SETTINGS_MARGIN) / 4;
+}
+
+static int calendar_option_width(void)
+{
+  const int content_width = ScreenWidth() - 2 * SETTINGS_MARGIN;
+  return (content_width - calendar_label_width() - 3 * SETTINGS_GAP) / 4;
+}
+
+static int calendar_rows_fit(void)
+{
+  const int bottom = ScreenHeight() - SETTINGS_BOTTOM_OFFSET - 15;
+  const int fit = (bottom - CAL_LIST_Y) / CAL_ROW_HEIGHT;
+  return fit > 2 ? fit : 2;
+}
+
+/* With more calendars than rows, the last row becomes a page switcher. */
+static int calendar_per_page(int count)
+{
+  const int fit = calendar_rows_fit();
+  return count <= fit ? fit : fit - 1;
+}
+
+static int calendar_page_count(int count)
+{
+  const int per_page = calendar_per_page(count);
+  return count <= per_page ? 1 : (count + per_page - 1) / per_page;
+}
+
+static ifont *heading_font(ifont *font)
+{
+  return settings_bold_font != NULL ? settings_bold_font : font;
+}
+
+void settings_set_bold_font(ifont *font)
+{
+  settings_bold_font = font;
+}
+
+static void draw_calendar_section(ifont *font, int foreground_color, int background_color)
+{
+  const int content_width = ScreenWidth() - 2 * SETTINGS_MARGIN;
+  const int half_width = button_width();
+  const int button_x = SETTINGS_MARGIN + half_width + SETTINGS_GAP;
+  const CalendarStatus status = calendar_status();
+
+  DrawLine(SETTINGS_MARGIN, CAL_SEPARATOR_Y, ScreenWidth() - SETTINGS_MARGIN, CAL_SEPARATOR_Y,
+           foreground_color);
+  SetFont(heading_font(font), foreground_color);
+  DrawTextRect(SETTINGS_MARGIN, CAL_HEADER_Y, half_width, CAL_HEADER_HEIGHT,
+               tr(STR_GOOGLE_CALENDAR), ALIGN_LEFT | VALIGN_MIDDLE | DOTS);
+  SetFont(font, foreground_color);
+
+  const char *button = NULL;
+  switch (status)
+  {
+  case CALENDAR_DISCONNECTED:
+    button = tr(STR_CONNECT);
+    break;
+  case CALENDAR_SIGNING_IN:
+    button = tr(STR_CANCEL);
+    break;
+  case CALENDAR_CONNECTING:
+    button = tr(STR_PLEASE_WAIT);
+    break;
+  case CALENDAR_SYNCING:
+  case CALENDAR_CONNECTED:
+    button = tr(STR_DISCONNECT);
+    break;
+  default:
+    break;
+  }
+  if (button != NULL)
+  {
+    DrawRect(button_x, CAL_HEADER_Y, half_width, CAL_HEADER_HEIGHT, foreground_color);
+    DrawTextRect(button_x, CAL_HEADER_Y, half_width, CAL_HEADER_HEIGHT, button,
+                 ALIGN_CENTER | VALIGN_MIDDLE | DOTS);
+  }
+
+  const char *message = calendar_message();
+  switch (status)
+  {
+  case CALENDAR_UNAVAILABLE:
+    message = tr(STR_CALENDAR_UNAVAILABLE);
+    break;
+  case CALENDAR_SIGNING_IN:
+    message = tr(STR_WAITING_FOR_BROWSER);
+    break;
+  case CALENDAR_CONNECTING:
+    message = tr(STR_SIGNING_IN);
+    break;
+  case CALENDAR_SYNCING:
+    message = tr(STR_LOADING_CALENDARS);
+    break;
+  case CALENDAR_DISCONNECTED:
+    message = message != NULL ? message : tr(STR_NOT_CONNECTED);
+    break;
+  case CALENDAR_CONNECTED:
+    message = message != NULL ? message : tr(STR_CONNECTED);
+    break;
+  }
+  DrawTextRect(SETTINGS_MARGIN, CAL_STATUS_Y, content_width, CAL_STATUS_HEIGHT, message,
+               ALIGN_LEFT | VALIGN_MIDDLE | DOTS);
+
+  if (status == CALENDAR_UNAVAILABLE)
+  {
+    return;
+  }
+
+  DrawTextRect(SETTINGS_MARGIN, CAL_DAYS_Y, calendar_label_width(), CAL_DAYS_HEIGHT,
+               tr(STR_DAYS), ALIGN_LEFT | VALIGN_MIDDLE | DOTS);
+  const int option_width = calendar_option_width();
+  for (int i = 0; i < 4; ++i)
+  {
+    const int option_x = SETTINGS_MARGIN + calendar_label_width() + i * (option_width + SETTINGS_GAP);
+    const int selected = calendar_draft.days == day_options[i];
+    char label[8];
+    snprintf(label, sizeof(label), "%d", day_options[i]);
+    if (selected)
+    {
+      FillArea(option_x, CAL_DAYS_Y, option_width, CAL_DAYS_HEIGHT, foreground_color);
+    }
+    else
+    {
+      DrawRect(option_x, CAL_DAYS_Y, option_width, CAL_DAYS_HEIGHT, foreground_color);
+    }
+    SetFont(font, selected ? background_color : foreground_color);
+    DrawTextRect(option_x, CAL_DAYS_Y, option_width, CAL_DAYS_HEIGHT, label,
+                 ALIGN_CENTER | VALIGN_MIDDLE);
+  }
+  SetFont(font, foreground_color);
+
+  const CalendarInfo *list;
+  const int count = calendar_list(&list);
+  if (count == 0)
+  {
+    DrawTextRect(SETTINGS_MARGIN, CAL_LIST_Y, content_width, CAL_ROW_HEIGHT,
+                 tr(STR_NO_CALENDARS), ALIGN_LEFT | VALIGN_MIDDLE | DOTS);
+    return;
+  }
+  const int per_page = calendar_per_page(count);
+  const int pages = calendar_page_count(count);
+  if (calendar_page >= pages)
+  {
+    calendar_page = pages - 1;
+  }
+  for (int row = 0; row < per_page; ++row)
+  {
+    const int index = calendar_page * per_page + row;
+    if (index >= count)
+    {
+      break;
+    }
+    const int row_y = CAL_LIST_Y + row * CAL_ROW_HEIGHT;
+    const int box_y = row_y + (CAL_ROW_HEIGHT - CAL_CHECKBOX) / 2;
+    DrawRect(SETTINGS_MARGIN, box_y, CAL_CHECKBOX, CAL_CHECKBOX, foreground_color);
+    DrawRect(SETTINGS_MARGIN + 1, box_y + 1, CAL_CHECKBOX - 2, CAL_CHECKBOX - 2, foreground_color);
+    if (calendar_is_selected(&calendar_draft, &list[index]))
+    {
+      FillArea(SETTINGS_MARGIN + 7, box_y + 7, CAL_CHECKBOX - 14, CAL_CHECKBOX - 14, foreground_color);
+    }
+    DrawTextRect(SETTINGS_MARGIN + CAL_CHECKBOX + 20, row_y, content_width - CAL_CHECKBOX - 20,
+                 CAL_ROW_HEIGHT, list[index].name, ALIGN_LEFT | VALIGN_MIDDLE | DOTS);
+  }
+  if (pages > 1)
+  {
+    const int nav_y = CAL_LIST_Y + per_page * CAL_ROW_HEIGHT;
+    calendar_draw_pager(SETTINGS_MARGIN + (content_width - CAL_PAGER_WIDTH) / 2, nav_y,
+                        CAL_PAGER_WIDTH, CAL_ROW_HEIGHT, calendar_page, pages, font,
+                        foreground_color);
+  }
+}
+
+/* Returns nonzero when the tap was inside the calendar section. */
+static int calendar_section_tap(int x, int y)
+{
+  /* Full width: the margins also count, which enlarges the page switcher. */
+  if (y < CAL_HEADER_Y || y >= ScreenHeight() - SETTINGS_BOTTOM_OFFSET - 15)
+  {
+    return 0;
+  }
+  const CalendarStatus status = calendar_status();
+  const int button_x = SETTINGS_MARGIN + button_width() + SETTINGS_GAP;
+
+  if (y < CAL_HEADER_Y + CAL_HEADER_HEIGHT)
+  {
+    if (x < button_x)
+    {
+      return 1;
+    }
+    if (status == CALENDAR_DISCONNECTED)
+    {
+      /* The browser takes over the screen; the result is picked up on return. */
+      calendar_connect();
+      redraw_settings();
+    }
+    else if (status == CALENDAR_SIGNING_IN)
+    {
+      calendar_cancel_sign_in();
+      redraw_settings();
+    }
+    else if (status == CALENDAR_SYNCING || status == CALENDAR_CONNECTED)
+    {
+      calendar_disconnect();
+      calendar_draft.configured = 0;
+      calendar_draft.count = 0;
+      calendar_page = 0;
+      redraw_settings();
+    }
+    return 1;
+  }
+  if (status == CALENDAR_UNAVAILABLE)
+  {
+    return 1;
+  }
+  if (y >= CAL_DAYS_Y && y < CAL_DAYS_Y + CAL_DAYS_HEIGHT)
+  {
+    const int option_width = calendar_option_width();
+    for (int i = 0; i < 4; ++i)
+    {
+      const int option_x = SETTINGS_MARGIN + calendar_label_width() + i * (option_width + SETTINGS_GAP);
+      if (x >= option_x && x < option_x + option_width)
+      {
+        calendar_draft.days = day_options[i];
+        redraw_settings();
+      }
+    }
+    return 1;
+  }
+  if (y >= CAL_LIST_Y)
+  {
+    const CalendarInfo *list;
+    const int count = calendar_list(&list);
+    const int per_page = calendar_per_page(count);
+    const int pages = calendar_page_count(count);
+    const int row = (y - CAL_LIST_Y) / CAL_ROW_HEIGHT;
+    if (pages > 1 && row >= per_page)
+    {
+      /* The whole row and the gap below it act as a large page switcher. */
+      if (x < ScreenWidth() / 2)
+      {
+        calendar_page = (calendar_page + pages - 1) % pages;
+      }
+      else
+      {
+        calendar_page = (calendar_page + 1) % pages;
+      }
+      redraw_settings();
+      return 1;
+    }
+    const int index = calendar_page * per_page + row;
+    if (row < per_page && index < count)
+    {
+      calendar_toggle(&calendar_draft, &list[index]);
+      redraw_settings();
+    }
+  }
+  return 1;
+}
+
+int settings_handle_swipe(int x, int y, int direction)
+{
+  (void)x;
+  if (!screen_open || keyboard_open || result_count != 0 || y < CAL_LIST_Y
+      || y >= ScreenHeight() - SETTINGS_BOTTOM_OFFSET - 15)
+  {
+    return 0;
+  }
+  const CalendarInfo *list;
+  const int pages = calendar_page_count(calendar_list(&list));
+  if (pages > 1)
+  {
+    calendar_page = (calendar_page + direction + pages) % pages;
+    redraw_settings();
+  }
+  return 1;
 }
 
 static void city_keyboard_done(char *text)
@@ -279,16 +583,17 @@ void settings_draw(ifont *font, int foreground_color, int background_color)
   const int save_x = SETTINGS_MARGIN + width + SETTINGS_GAP;
 
   FillArea(0, 0, ScreenWidth(), ScreenHeight(), background_color);
-  SetFont(font, foreground_color);
+  SetFont(heading_font(font), foreground_color);
 
   DrawTextRect(SETTINGS_MARGIN, 40, content_width, 80,
-               tr(STR_SETTINGS), ALIGN_LEFT | VALIGN_MIDDLE);
+               tr(STR_SETTINGS), ALIGN_CENTER | VALIGN_MIDDLE);
 
   DrawLine(SETTINGS_MARGIN, 130, ScreenWidth() - SETTINGS_MARGIN, 130,
            foreground_color);
 
   DrawTextRect(SETTINGS_MARGIN, 155, content_width, 60,
                tr(STR_WEATHER_CITY), ALIGN_LEFT | VALIGN_MIDDLE);
+  SetFont(font, foreground_color);
 
   DrawRect(SETTINGS_MARGIN, CITY_Y, content_width, CITY_HEIGHT,
            foreground_color);
@@ -314,8 +619,10 @@ void settings_draw(ifont *font, int foreground_color, int background_color)
   char interval_title[160];
   snprintf(interval_title, sizeof(interval_title), "%s (%s)",
            tr(STR_UPDATE_INTERVAL), tr(STR_MINUTES_SHORT));
+  SetFont(heading_font(font), foreground_color);
   DrawTextRect(SETTINGS_MARGIN, 435, content_width, 60,
                interval_title, ALIGN_LEFT | VALIGN_MIDDLE);
+  SetFont(font, foreground_color);
 
   const int option_width = interval_width();
 
@@ -380,6 +687,12 @@ void settings_draw(ifont *font, int foreground_color, int background_color)
   }
   SetFont(font, foreground_color);
 
+  if (result_count == 0)
+  {
+    draw_calendar_section(font, foreground_color, background_color);
+    SetFont(font, foreground_color);
+  }
+
   DrawRect(SETTINGS_MARGIN, y, width, SETTINGS_BUTTON_HEIGHT,
            foreground_color);
   DrawTextRect(SETTINGS_MARGIN, y, width, SETTINGS_BUTTON_HEIGHT,
@@ -425,6 +738,11 @@ SettingsAction settings_handle_tap(int x, int y)
       start_search(1);
     }
 
+    return SETTINGS_NONE;
+  }
+
+  if (result_count == 0 && calendar_section_tap(x, y))
+  {
     return SETTINGS_NONE;
   }
 
@@ -503,6 +821,7 @@ void settings_set_active(int active)
 
 void settings_end(void)
 {
+  calendar_set_listener(NULL);
   screen_open = 0;
   screen_active = 0;
   keyboard_open = 0;
